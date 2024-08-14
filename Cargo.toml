@@ -1,0 +1,29 @@
+[package]
+name = "bookmark_exporter"
+version = "0.0.0"
+edition = "2021"
+authors = ["John Lyon-Smith <john@lyon-smith.org>"]
+description = "Bookmark exporter"
+repository = "https://github.com/jlyonsmith/bookmark_exporter"
+readme = "README.md"
+keywords = []
+categories = []
+license = "Unlicense"
+
+[dependencies]
+anyhow = "1.0.86"
+clap = { version = "4.5.4", features = ["derive", "env"] }
+lazy_static = "1.4.0"
+thiserror = "1.0.61"
+yansi = "1.0.1"
+
+[dev-dependencies]
+criterion = "^0.5"
+
+[[bench]]
+name = "benchmarks"
+harness = false
+
+[[bin]]
+name = "bookmark-exporter"
+path = "src/bin/bookmark_exporter.rs"

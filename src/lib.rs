@@ -1,13 +1,14 @@
 mod log_macros;
 
-use anyhow::Context;
+use anyhow::{bail, Context, Result};
 use clap::Parser;
 use core::fmt::Arguments;
+use glob::glob;
 use std::{
-    error::Error,
+    env,
     fs::File,
-    io::{self, Read, Write},
-    path::PathBuf,
+    io::{self, Write},
+    path::{Path, PathBuf},
 };
 
 pub trait BookmarkExporterLog {
@@ -27,10 +28,6 @@ struct Cli {
     #[arg(long = "no-color", short = 'n', env = "NO_CLI_COLOR")]
     no_color: bool,
 
-    /// The input file
-    #[arg(value_name = "INPUT_FILE")]
-    input_file: Option<PathBuf>,
-
     /// The output file
     #[arg(value_name = "OUTPUT_FILE")]
     output_file: Option<PathBuf>,
@@ -48,15 +45,6 @@ impl Cli {
             None => Ok(Box::new(io::stdout())),
         }
     }
-
-    fn get_input(&self) -> anyhow::Result<Box<dyn Read>> {
-        match self.input_file {
-            Some(ref path) => File::open(path)
-                .context(format!("Unable to open file '{}'", path.to_string_lossy()))
-                .map(|f| Box::new(f) as Box<dyn Read>),
-            None => Ok(Box::new(io::stdin())),
-        }
-    }
 }
 
 impl<'a> BookmarkExporterTool<'a> {
@@ -64,10 +52,7 @@ impl<'a> BookmarkExporterTool<'a> {
         BookmarkExporterTool { log }
     }
 
-    pub fn run(
-        self: &mut Self,
-        args: impl IntoIterator<Item = std::ffi::OsString>,
-    ) -> Result<(), Box<dyn Error>> {
+    pub fn run(self: &mut Self, args: impl IntoIterator<Item = std::ffi::OsString>) -> Result<()> {
         let cli = match Cli::try_parse_from(args) {
             Ok(m) => m,
             Err(err) => {
@@ -76,13 +61,44 @@ impl<'a> BookmarkExporterTool<'a> {
             }
         };
 
-        let mut content = String::new();
-
-        cli.get_input()?.read_to_string(&mut content)?;
+        let content = self.export_firefox_bookmarks()?;
 
         write!(cli.get_output()?, "{}", content)?;
 
         Ok(())
+    }
+
+    pub fn export_firefox_bookmarks(&self) -> Result<String> {
+        let path: PathBuf = [
+            env::var("HOME")?.as_ref(),
+            Path::new("Library/Application Support/Firefox/Profiles/*.default-release"),
+        ]
+        .iter()
+        .collect();
+
+        let profile_dir_path;
+
+        if let Some(entry) = glob(&path.to_string_lossy())?.next() {
+            profile_dir_path = entry?;
+        } else {
+            bail!("A Firefox profile directory was not found");
+        }
+
+        let places_path: PathBuf = [Path::new(&profile_dir_path), Path::new("places.sqlite")]
+            .iter()
+            .collect();
+        let connection = sqlite::open(places_path)?;
+        let query = "select '[' || moz_bookmarks.title || '](' || url || ')' from moz_bookmarks left join moz_places on fk = moz_places.id where url <> '' and moz_bookmarks.title <> '';";
+
+        for row in connection
+            .prepare(query)?
+            .into_iter()
+            .map(|row| row.unwrap())
+        {
+            println!("{}", row.read::<&str, _>(0));
+        }
+
+        Ok("".to_string())
     }
 }
 

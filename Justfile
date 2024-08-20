@@ -1,3 +1,6 @@
+default:
+  just --list
+
 coverage OPEN='':
   #!/usr/bin/env fish
   set -x RUSTFLAGS '-C instrument-coverage'

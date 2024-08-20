@@ -4,9 +4,10 @@ use anyhow::{bail, Context, Result};
 use clap::Parser;
 use core::fmt::Arguments;
 use glob::glob;
+use json::JsonValue;
 use std::{
     env,
-    fs::File,
+    fs::{self, File},
     io::{self, Write},
     path::{Path, PathBuf},
 };
@@ -61,9 +62,9 @@ impl<'a> BookmarkExporterTool<'a> {
             }
         };
 
-        let content = self.export_firefox_bookmarks()?;
+        write!(cli.get_output()?, "{}", self.export_firefox_bookmarks()?)?;
 
-        write!(cli.get_output()?, "{}", content)?;
+        write!(cli.get_output()?, "{}", self.export_chrome_bookmarks()?)?;
 
         Ok(())
     }
@@ -84,18 +85,61 @@ impl<'a> BookmarkExporterTool<'a> {
             bail!("A Firefox profile directory was not found");
         }
 
-        let places_path: PathBuf = [Path::new(&profile_dir_path), Path::new("places.sqlite")]
+        let places_path: PathBuf = [&profile_dir_path, Path::new("places.sqlite")]
             .iter()
             .collect();
         let connection = sqlite::open(places_path)?;
         let query = "select '[' || moz_bookmarks.title || '](' || url || ')' from moz_bookmarks left join moz_places on fk = moz_places.id where url <> '' and moz_bookmarks.title <> '';";
+        let mut output = String::new();
 
         for row in connection
             .prepare(query)?
             .into_iter()
             .map(|row| row.unwrap())
         {
-            println!("{}", row.read::<&str, _>(0));
+            output.push_str(&format!("{}\n", row.read::<&str, _>(0)));
+        }
+
+        Ok(output)
+    }
+
+    pub fn export_chrome_bookmarks(&self) -> Result<String> {
+        let mut bookmarks_path = PathBuf::from(env::var("HOME")?);
+
+        bookmarks_path.push("Library/Application Support/Google/Chrome/Default/Bookmarks");
+
+        let json = json::parse(&fs::read_to_string(bookmarks_path)?)?;
+
+        fn extract_children<'a>(value: &'a JsonValue) -> Option<Vec<&'a JsonValue>> {
+            if !value.is_null() && value.is_object() {
+                let children = &value["children"];
+
+                if children.is_array() {
+                    let mut entries: Vec<&JsonValue> = vec![];
+
+                    for child in children.members() {
+                        if let Some(mut child_values) = extract_children(child) {
+                            entries.append(&mut child_values);
+                        }
+                    }
+
+                    return Some(entries);
+                }
+            }
+
+            return None;
+        }
+
+        let mut entries: Vec<&JsonValue> = vec![];
+
+        if !json["root"].is_null() {
+            let bookmarks_bar = &json["bookmarks_bar"];
+
+            if bookmarks_bar.is_object() {
+                if let Some(mut child_values) = extract_children(&bookmarks_bar["children"]) {
+                    entries.append(&mut child_values);
+                }
+            }
         }
 
         Ok("".to_string())

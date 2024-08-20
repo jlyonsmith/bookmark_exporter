@@ -8,10 +8,10 @@ This is a basic CLI bookmark exporter tool.  It dumps bookmark information to `s
 
 Currently the following browsers are supported:
 
-| Browser | Description                                                          |
-| ------- | -------------------------------------------------------------------- |
-| Firefox | Uses a SQLite database so *Firefox must be closed to do the export.* |
-| Chrome  | Uses a JSON file and the export can be run with Chrome open.         |
+| Browser | Argument    | Description                                                                                                                                   |
+| ------- | ----------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| Firefox | `--firefox` | Firefox uses a SQLite database so *the browser must be closed to do the export.*                                                              |
+| Chrome  | `--chrome`  | Chrome uses a JSON file and the export can be run with the browser open. You may still want to close it if you have recently added bookmarks. |
 
 The tool has been tested on:
 

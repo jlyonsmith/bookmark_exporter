@@ -29,6 +29,14 @@ struct Cli {
     #[arg(long = "no-color", short = 'n', env = "NO_CLI_COLOR")]
     no_color: bool,
 
+    /// Export Chrome bookmarks
+    #[arg(long = "chrome")]
+    export_chrome: bool,
+
+    /// Export Firefox bookmarks
+    #[arg(long = "firefox")]
+    export_firefox: bool,
+
     /// The output file
     #[arg(value_name = "OUTPUT_FILE")]
     output_file: Option<PathBuf>,
@@ -62,9 +70,13 @@ impl<'a> BookmarkExporterTool<'a> {
             }
         };
 
-        write!(cli.get_output()?, "{}", self.export_firefox_bookmarks()?)?;
+        if cli.export_firefox {
+            write!(cli.get_output()?, "{}", self.export_firefox_bookmarks()?)?;
+        }
 
-        write!(cli.get_output()?, "{}", self.export_chrome_bookmarks()?)?;
+        if cli.export_chrome {
+            write!(cli.get_output()?, "{}", self.export_chrome_bookmarks()?)?;
+        }
 
         Ok(())
     }
@@ -110,16 +122,18 @@ impl<'a> BookmarkExporterTool<'a> {
 
         let json = json::parse(&fs::read_to_string(bookmarks_path)?)?;
 
-        fn extract_children<'a>(value: &'a JsonValue) -> Option<Vec<&'a JsonValue>> {
-            if !value.is_null() && value.is_object() {
+        fn flatten_children<'a>(value: &'a JsonValue) -> Option<Vec<&'a JsonValue>> {
+            if value.is_object() {
                 let children = &value["children"];
 
                 if children.is_array() {
                     let mut entries: Vec<&JsonValue> = vec![];
 
                     for child in children.members() {
-                        if let Some(mut child_values) = extract_children(child) {
+                        if let Some(mut child_values) = flatten_children(child) {
                             entries.append(&mut child_values);
+                        } else {
+                            entries.push(child);
                         }
                     }
 
@@ -132,17 +146,34 @@ impl<'a> BookmarkExporterTool<'a> {
 
         let mut entries: Vec<&JsonValue> = vec![];
 
-        if !json["root"].is_null() {
-            let bookmarks_bar = &json["bookmarks_bar"];
+        let roots = &json["roots"];
 
-            if bookmarks_bar.is_object() {
-                if let Some(mut child_values) = extract_children(&bookmarks_bar["children"]) {
-                    entries.append(&mut child_values);
-                }
+        if roots.is_object() {
+            let bookmark_bar = &roots["bookmark_bar"];
+
+            if let Some(mut child_values) = flatten_children(bookmark_bar) {
+                entries.append(&mut child_values);
+            }
+
+            let other = &roots["other"];
+
+            if let Some(mut child_values) = flatten_children(other) {
+                entries.append(&mut child_values);
             }
         }
 
-        Ok("".to_string())
+        let mut output = String::new();
+
+        for entry in entries.iter() {
+            if entry["type"] == "url" {
+                let url = &entry["url"];
+                let name = &entry["name"];
+
+                output.push_str(&format!("[{}]({})\n", name.to_string(), url.to_string()));
+            }
+        }
+
+        Ok(output)
     }
 }
 

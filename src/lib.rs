@@ -5,6 +5,7 @@ use clap::Parser;
 use core::fmt::Arguments;
 use glob::glob;
 use json::JsonValue;
+use rusqlite::Connection;
 use std::{
     env,
     fs::{self, File},
@@ -71,17 +72,17 @@ impl<'a> BookmarkExporterTool<'a> {
         };
 
         if cli.export_firefox {
-            write!(cli.get_output()?, "{}", self.export_firefox_bookmarks()?)?;
+            self.export_firefox_bookmarks(&mut cli.get_output()?)?;
         }
 
         if cli.export_chrome {
-            write!(cli.get_output()?, "{}", self.export_chrome_bookmarks()?)?;
+            self.export_chrome_bookmarks(&mut cli.get_output()?)?;
         }
 
         Ok(())
     }
 
-    pub fn export_firefox_bookmarks(&self) -> Result<String> {
+    pub fn export_firefox_bookmarks(&self, writer: &mut Box<dyn Write>) -> Result<()> {
         let path: PathBuf = [
             env::var("HOME")?.as_ref(),
             Path::new("Library/Application Support/Firefox/Profiles/*.default-release"),
@@ -100,22 +101,31 @@ impl<'a> BookmarkExporterTool<'a> {
         let places_path: PathBuf = [&profile_dir_path, Path::new("places.sqlite")]
             .iter()
             .collect();
-        let connection = sqlite::open(places_path)?;
-        let query = "select '[' || moz_bookmarks.title || '](' || url || ')' from moz_bookmarks left join moz_places on fk = moz_places.id where url <> '' and moz_bookmarks.title <> '';";
-        let mut output = String::new();
+        let connection = Connection::open(places_path)?;
+        let query = "select moz_bookmarks.title, url from moz_bookmarks left join moz_places on fk = moz_places.id where url <> '' and moz_bookmarks.title <> '';";
 
-        for row in connection
-            .prepare(query)?
-            .into_iter()
-            .map(|row| row.unwrap())
-        {
-            output.push_str(&format!("{}\n", row.read::<&str, _>(0)));
+        struct Bookmark {
+            title: String,
+            url: String,
         }
 
-        Ok(output)
+        let mut statement = connection.prepare(query)?;
+        let row_iter = statement.query_map([], |row| {
+            Ok(Bookmark {
+                title: row.get(0)?,
+                url: row.get(1)?,
+            })
+        })?;
+
+        for row in row_iter {
+            let bookmark = row?;
+            write!(writer, "{}\n{}\n", bookmark.title, bookmark.url)?;
+        }
+
+        Ok(())
     }
 
-    pub fn export_chrome_bookmarks(&self) -> Result<String> {
+    pub fn export_chrome_bookmarks(&self, writer: &mut Box<dyn Write>) -> Result<()> {
         let mut bookmarks_path = PathBuf::from(env::var("HOME")?);
 
         bookmarks_path.push("Library/Application Support/Google/Chrome/Default/Bookmarks");
@@ -162,18 +172,16 @@ impl<'a> BookmarkExporterTool<'a> {
             }
         }
 
-        let mut output = String::new();
-
         for entry in entries.iter() {
             if entry["type"] == "url" {
                 let url = &entry["url"];
                 let name = &entry["name"];
 
-                output.push_str(&format!("[{}]({})\n", name.to_string(), url.to_string()));
+                write!(writer, "{}\n{}\n", name.to_string(), url.to_string())?;
             }
         }
 
-        Ok(output)
+        Ok(())
     }
 }
 

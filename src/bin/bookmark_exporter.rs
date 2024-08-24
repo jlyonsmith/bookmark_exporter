@@ -1,5 +1,5 @@
-use core::fmt::Arguments;
 use bookmark_exporter::{error, BookmarkExporterLog, BookmarkExporterTool};
+use core::fmt::Arguments;
 use yansi::Paint;
 
 struct BookmarkExporterLogger;
@@ -12,7 +12,7 @@ impl BookmarkExporterLogger {
 
 impl BookmarkExporterLog for BookmarkExporterLogger {
     fn output(self: &Self, args: Arguments) {
-        println!("{}", args);
+        eprintln!("{}", args);
     }
     fn warning(self: &Self, args: Arguments) {
         eprintln!("{}", Paint::yellow(&format!("warning: {}", args)));

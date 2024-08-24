@@ -1,6 +1,6 @@
 [package]
 name = "bookmark_exporter"
-version = "0.0.0"
+version = "1.0.0"
 edition = "2021"
 authors = ["John Lyon-Smith <john@lyon-smith.org>"]
 description = "Bookmark exporter"

@@ -7,7 +7,6 @@ use glob::glob;
 use json::JsonValue;
 use rusqlite::Connection;
 use std::{
-    env,
     fs::{self, File},
     io::{self, Write},
     path::{Path, PathBuf},
@@ -24,7 +23,7 @@ pub struct BookmarkExporterTool<'a> {
 }
 
 #[derive(Parser)]
-#[clap(version, about, long_about = None)]
+#[clap(version, about, long_about = None, arg_required_else_help = true)]
 struct Cli {
     /// Disable colors in output
     #[arg(long = "no-color", short = 'n', env = "NO_CLI_COLOR")]
@@ -71,10 +70,6 @@ impl<'a> BookmarkExporterTool<'a> {
             }
         };
 
-        if cli.export_firefox {
-            self.export_firefox_bookmarks(&mut cli.get_output()?)?;
-        }
-
         if cli.export_chrome {
             self.export_chrome_bookmarks(&mut cli.get_output()?)?;
         }
@@ -83,12 +78,9 @@ impl<'a> BookmarkExporterTool<'a> {
     }
 
     pub fn export_firefox_bookmarks(&self, writer: &mut Box<dyn Write>) -> Result<()> {
-        let path: PathBuf = [
-            env::var("HOME")?.as_ref(),
-            Path::new("Library/Application Support/Firefox/Profiles/*.default-release"),
-        ]
-        .iter()
-        .collect();
+        let mut path = dirs::home_dir().context("No home directory found")?;
+
+        path.push("Library/Application Support/Firefox/Profiles/*.default-release");
 
         let profile_dir_path;
 
@@ -126,7 +118,7 @@ impl<'a> BookmarkExporterTool<'a> {
     }
 
     pub fn export_chrome_bookmarks(&self, writer: &mut Box<dyn Write>) -> Result<()> {
-        let mut bookmarks_path = PathBuf::from(env::var("HOME")?);
+        let mut bookmarks_path = dirs::home_dir().context("No home directory found")?;
 
         bookmarks_path.push("Library/Application Support/Google/Chrome/Default/Bookmarks");
 
